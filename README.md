@@ -28,3 +28,11 @@ To integrate `datacrumbs` you defer the output generation to it
 generate.sh --input /data/some --use_foo --output `datacrumbs /data/out`
 ```
 
+
+## Install
+
+Install [rust](https://rustup.rs) and then 
+
+```
+cargo install --git https://github.com/winding-lines/datacrumbs.git
+```

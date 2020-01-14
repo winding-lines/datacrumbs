@@ -5,12 +5,13 @@ use std::path::Path;
 
 use chrono::{DateTime, SecondsFormat, Utc};
 use failure::{err_msg, Fallible};
-use git2::Repository;
 use mac_address::get_mac_address;
 use serde::{Deserialize, Serialize};
 use structopt::StructOpt;
 use uuid::v1::{Context, Timestamp};
 use uuid::Uuid;
+
+mod code;
 
 #[derive(Serialize, Deserialize)]
 struct BreadCrumb {
@@ -32,14 +33,33 @@ fn create_output(base_folder: &str) -> Fallible<String> {
     // Gather the context for breadcrumbs
     let path = env::current_dir()?;
     let now: DateTime<Utc> = Utc::now();
-    let git_hash = if let Ok(repo) = Repository::discover(".") {
-        let head = repo.head()?.target().map(|s| s.to_string()).unwrap_or_default();
-        head
-    } else {
-        "".to_string()
-    };
+    let uuid = build_uuid(now)?;
 
     // create the output folder in the base folder, use an uuid
+    let out_folder = Path::new(base_folder).join(uuid.clone());
+    create_dir_all(out_folder.as_path())?;
+
+    // save the current code state
+    let git_hash = code::status(&out_folder).unwrap_or_default();
+
+    let bc = BreadCrumb {
+        cwd: path.as_os_str().to_str().unwrap().to_string(),
+        create_time: now.to_rfc3339_opts(SecondsFormat::Secs, false),
+        id: uuid,
+        git_hash,
+        git_repo: "".to_string(),
+    };
+    let json = serde_json::to_string_pretty(&bc)?;
+    let out_file = out_folder.join("datacrumbs.json");
+    let mut file = File::create(out_file)?;
+    file.write(json.as_bytes())?;
+    out_folder
+        .to_str()
+        .map(String::from)
+        .ok_or(err_msg("bad path"))
+}
+
+fn build_uuid(now: DateTime<Utc>) -> Fallible<String> {
     let context = Context::new(1);
     let timestamp = Timestamp::from_unix(
         context,
@@ -50,24 +70,7 @@ fn create_output(base_folder: &str) -> Fallible<String> {
         .ok_or(err_msg("missing MAC address"))?
         .bytes();
     let uuid = Uuid::new_v1(timestamp, &node_id)?.to_string();
-    let out_folder = Path::new(base_folder).join(uuid.clone());
-    create_dir_all(out_folder.as_path())?;
-
-    let bc = BreadCrumb {
-        cwd: path.as_os_str().to_str().unwrap().to_string(),
-        create_time: now.to_rfc3339_opts(SecondsFormat::Secs, false),
-        id: uuid,
-        git_hash,
-        git_repo: "".to_string()
-    };
-    let json = serde_json::to_string_pretty(&bc)?;
-    let out_file = out_folder.join("datacrumbs.json");
-    let mut file = File::create(out_file)?;
-    file.write(json.as_bytes())?;
-    out_folder
-        .to_str()
-        .map(String::from)
-        .ok_or(err_msg("bad path"))
+    Ok(uuid)
 }
 
 fn main() -> Result<(), failure::Error> {

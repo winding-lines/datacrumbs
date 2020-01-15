@@ -16,8 +16,17 @@ pub fn status(diff_location: &Path) -> Fallible<String> {
     let file = File::create(file_name)?;
 
     Command::new("git")
+        .arg("add")
+        .arg("-A")
+        .output()?;
+    Command::new("git")
         .arg("diff")
+        .arg("HEAD")
         .stdout(file)
+        .output()?;
+    Command::new("git")
+        .arg("reset")
+        .arg("HEAD")
         .output()?;
     Ok(head)
 }
